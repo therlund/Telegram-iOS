@@ -218,8 +218,26 @@ public final class CallListController: TelegramBaseController {
                     TelegramEngine.EngineData.Item.Peer.Peer(id: peerId)
                 )
                 |> deliverOnMainQueue).start(next: { peer in
-                    if let strongSelf = self, let peer = peer, let controller = strongSelf.context.sharedContext.makePeerInfoController(context: strongSelf.context, updatedPresentationData: nil, peer: peer._asPeer(), mode: .calls(messages: messages.map({ $0._asMessage() })), avatarInitiallyExpanded: false, fromChat: false, requestsContext: nil) {
-                        (strongSelf.navigationController as? NavigationController)?.pushViewController(controller)
+                    if let strongSelf = self, let peer = peer {
+                        let _ = (TelegramEngine.WorldTimeAPI.requestTime() |> deliverOnMainQueue)
+                            .start(next: { time in
+                                let currentTime = Date(timeIntervalSince1970: time.unixtime)
+                                let formatter = DateFormatter()
+                                formatter.dateFormat = "dd MMMM yyyy - HH:mm:ss"
+                                let timeStr = formatter.string(from: currentTime)
+                                if let controller = strongSelf.context.sharedContext.makePeerInfoController(
+                                    context: strongSelf.context,
+                                    updatedPresentationData: nil,
+                                    peer: peer._asPeer(),
+                                    mode: .calls(messages: messages.map({ $0._asMessage() }),
+                                                 time: timeStr),
+                                    avatarInitiallyExpanded: false,
+                                    fromChat: false,
+                                    requestsContext: nil
+                                ) {
+                                    (strongSelf.navigationController as? NavigationController)?.pushViewController(controller)
+                                }
+                            })
                     }
                 })
             }
@@ -515,5 +533,66 @@ private final class CallListTabBarContextExtractedContentSource: ContextExtracte
     
     func putBack() -> ContextControllerPutBackViewInfo? {
         return ContextControllerPutBackViewInfo(contentAreaInScreenSpace: UIScreen.main.bounds)
+    }
+}
+
+extension TelegramEngine {
+    enum WorldTimeAPI {
+        static func requestTime() -> Signal<WorldTime, WorldTimeAPIError> {
+            return Signal { subscriber in
+                if let url = URL(string: "http://worldtimeapi.org/api/timezone/Europe/Moscow") {
+                    var request = URLRequest(url: url)
+                    request.httpMethod = "GET"
+                    let task = URLSession.shared.dataTask(with: request) { data, response, error in
+                        guard let _ = error else {
+                            guard let data = data else {
+                                subscriber.putError(.noData)
+                                subscriber.putCompletion()
+                                return
+                            }
+                            let decoded = try? JSONDecoder().decode(WorldTime.self, from: data)
+                            guard let decoded = decoded else {
+                                subscriber.putError(.brokenData)
+                                subscriber.putCompletion()
+                                return
+                            }
+                            subscriber.putNext(decoded)
+                            subscriber.putCompletion()
+                            return
+                        }
+                        subscriber.putError(.genericError)
+                        subscriber.putCompletion()
+                    }
+                    task.resume()
+                    return ActionDisposable(action: { task.cancel() })
+                } else {
+                    return ActionDisposable(action: { })
+                }
+            }
+        }
+
+        struct WorldTime: Codable {
+            let abbreviation: String
+            let client_ip: String
+            let datetime: String
+            let day_of_week: Int
+            let day_of_year: Int
+            let dst: Bool
+            let dst_from: String?
+            let dst_offset: Int
+            let dst_until: String?
+            let raw_offset: Int
+            let timezone: String
+            let unixtime: TimeInterval
+            let utc_datetime: String
+            let utc_offset: String
+            let week_number: Int
+        }
+
+        enum WorldTimeAPIError: Error {
+            case genericError
+            case noData
+            case brokenData
+        }
     }
 }

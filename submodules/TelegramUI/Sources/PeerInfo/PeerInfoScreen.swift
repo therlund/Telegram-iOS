@@ -931,7 +931,17 @@ private func settingsEditingItems(data: PeerInfoScreenData?, state: PeerInfoStat
     return result
 }
 
-private func infoItems(data: PeerInfoScreenData?, context: AccountContext, presentationData: PresentationData, interaction: PeerInfoInteraction, nearbyPeerDistance: Int32?, reactionSourceMessageId: MessageId?, callMessages: [Message], chatLocation: ChatLocation) -> [(AnyHashable, [PeerInfoScreenItem])] {
+private func infoItems(
+    data: PeerInfoScreenData?,
+    context: AccountContext,
+    presentationData: PresentationData,
+    interaction: PeerInfoInteraction,
+    nearbyPeerDistance: Int32?,
+    reactionSourceMessageId: MessageId?,
+    callMessages: [Message],
+    chatLocation: ChatLocation,
+    time: String? = nil
+) -> [(AnyHashable, [PeerInfoScreenItem])] {
     guard let data = data else {
         return []
     }
@@ -957,7 +967,7 @@ private func infoItems(data: PeerInfoScreenData?, context: AccountContext, prese
     
     if let user = data.peer as? TelegramUser {
         if !callMessages.isEmpty {
-            items[.calls]!.append(PeerInfoScreenCallListItem(id: 20, messages: callMessages))
+            items[.calls]!.append(PeerInfoScreenCallListItem(id: 20, messages: callMessages, time: time))
         }
         
         if let phone = user.phone {
@@ -1837,6 +1847,7 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, UIScrollViewDelegate 
     private let isOpenedFromChat: Bool
     private let videoCallsEnabled: Bool
     private let callMessages: [Message]
+    private let time: String?
     private let chatLocation: ChatLocation
     private let chatLocationContextHolder: Atomic<ChatLocationContextHolder?>
     
@@ -1935,8 +1946,23 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, UIScrollViewDelegate 
         return self._ready
     }
     private var didSetReady = false
-    
-    init(controller: PeerInfoScreenImpl, context: AccountContext, peerId: PeerId, avatarInitiallyExpanded: Bool, isOpenedFromChat: Bool, nearbyPeerDistance: Int32?, reactionSourceMessageId: MessageId?, callMessages: [Message], isSettings: Bool, hintGroupInCommon: PeerId?, requestsContext: PeerInvitationImportersContext?, chatLocation: ChatLocation, chatLocationContextHolder: Atomic<ChatLocationContextHolder?>) {
+
+    init(
+        controller: PeerInfoScreenImpl,
+        context: AccountContext,
+        peerId: PeerId,
+        avatarInitiallyExpanded: Bool,
+        isOpenedFromChat: Bool,
+        nearbyPeerDistance: Int32?,
+        reactionSourceMessageId: MessageId?,
+        callMessages: [Message],
+        isSettings: Bool,
+        hintGroupInCommon: PeerId?,
+        requestsContext: PeerInvitationImportersContext?,
+        chatLocation: ChatLocation,
+        chatLocationContextHolder: Atomic<ChatLocationContextHolder?>,
+        time: String? = nil
+    ) {
         self.controller = controller
         self.context = context
         self.peerId = peerId
@@ -1950,6 +1976,7 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, UIScrollViewDelegate 
         self.chatLocation = chatLocation
         self.chatLocationContextHolder = chatLocationContextHolder
         self.isMediaOnly = context.account.peerId == peerId && !isSettings
+        self.time = time
         
         self.scrollNode = ASScrollNode()
         self.scrollNode.view.delaysContentTouches = false
@@ -8088,9 +8115,27 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, UIScrollViewDelegate 
             var insets = UIEdgeInsets()
             insets.left += sectionInset
             insets.right += sectionInset
-            
-            let items = self.isSettings ? settingsItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, isExpanded: self.headerNode.isAvatarExpanded) : infoItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, nearbyPeerDistance: self.nearbyPeerDistance, reactionSourceMessageId: self.reactionSourceMessageId, callMessages: self.callMessages, chatLocation: self.chatLocation)
-            
+
+            let items = self.isSettings
+                ? settingsItems(
+                    data: self.data,
+                    context: self.context,
+                    presentationData: self.presentationData,
+                    interaction: self.interaction,
+                    isExpanded: self.headerNode.isAvatarExpanded
+                )
+                : infoItems(
+                    data: self.data,
+                    context: self.context,
+                    presentationData: self.presentationData,
+                    interaction: self.interaction,
+                    nearbyPeerDistance: self.nearbyPeerDistance,
+                    reactionSourceMessageId: self.reactionSourceMessageId,
+                    callMessages: self.callMessages,
+                    chatLocation: self.chatLocation,
+                    time: time
+                )
+
             contentHeight += headerHeight
             if !(self.isSettings && self.state.isEditing) {
                 contentHeight += sectionSpacing
@@ -8707,6 +8752,7 @@ public final class PeerInfoScreenImpl: ViewController, PeerInfoScreen, KeyShortc
     private let nearbyPeerDistance: Int32?
     private let reactionSourceMessageId: MessageId?
     private let callMessages: [Message]
+    private let time: String?
     private let isSettings: Bool
     private let hintGroupInCommon: PeerId?
     private weak var requestsContext: PeerInvitationImportersContext?
@@ -8746,7 +8792,21 @@ public final class PeerInfoScreenImpl: ViewController, PeerInfoScreen, KeyShortc
     
     private var validLayout: (layout: ContainerViewLayout, navigationHeight: CGFloat)?
     
-    public init(context: AccountContext, updatedPresentationData: (initial: PresentationData, signal: Signal<PresentationData, NoError>)?, peerId: PeerId, avatarInitiallyExpanded: Bool, isOpenedFromChat: Bool, nearbyPeerDistance: Int32?, reactionSourceMessageId: MessageId?, callMessages: [Message], isSettings: Bool = false, hintGroupInCommon: PeerId? = nil, requestsContext: PeerInvitationImportersContext? = nil, forumTopicThread: ChatReplyThreadMessage? = nil) {
+    public init(
+        context: AccountContext,
+        updatedPresentationData: (initial: PresentationData, signal: Signal<PresentationData, NoError>)?,
+        peerId: PeerId,
+        avatarInitiallyExpanded: Bool,
+        isOpenedFromChat: Bool,
+        nearbyPeerDistance: Int32?,
+        reactionSourceMessageId: MessageId?,
+        callMessages: [Message],
+        time: String? = nil,
+        isSettings: Bool = false,
+        hintGroupInCommon: PeerId? = nil,
+        requestsContext: PeerInvitationImportersContext? = nil,
+        forumTopicThread: ChatReplyThreadMessage? = nil
+    ) {
         self.context = context
         self.updatedPresentationData = updatedPresentationData
         self.peerId = peerId
@@ -8758,6 +8818,7 @@ public final class PeerInfoScreenImpl: ViewController, PeerInfoScreen, KeyShortc
         self.isSettings = isSettings
         self.hintGroupInCommon = hintGroupInCommon
         self.requestsContext = requestsContext
+        self.time = time
         
         if let forumTopicThread = forumTopicThread {
             self.chatLocation = .replyThread(message: forumTopicThread)
@@ -9060,7 +9121,22 @@ public final class PeerInfoScreenImpl: ViewController, PeerInfoScreen, KeyShortc
     }
     
     override public func loadDisplayNode() {
-        self.displayNode = PeerInfoScreenNode(controller: self, context: self.context, peerId: self.peerId, avatarInitiallyExpanded: self.avatarInitiallyExpanded, isOpenedFromChat: self.isOpenedFromChat, nearbyPeerDistance: self.nearbyPeerDistance, reactionSourceMessageId: self.reactionSourceMessageId, callMessages: self.callMessages, isSettings: self.isSettings, hintGroupInCommon: self.hintGroupInCommon, requestsContext: self.requestsContext, chatLocation: self.chatLocation, chatLocationContextHolder: self.chatLocationContextHolder)
+        self.displayNode = PeerInfoScreenNode(
+            controller: self,
+            context: self.context,
+            peerId: self.peerId,
+            avatarInitiallyExpanded: self.avatarInitiallyExpanded,
+            isOpenedFromChat: self.isOpenedFromChat,
+            nearbyPeerDistance: self.nearbyPeerDistance,
+            reactionSourceMessageId: self.reactionSourceMessageId,
+            callMessages: self.callMessages,
+            isSettings: self.isSettings,
+            hintGroupInCommon: self.hintGroupInCommon,
+            requestsContext: self.requestsContext,
+            chatLocation: self.chatLocation,
+            chatLocationContextHolder: self.chatLocationContextHolder,
+            time: self.time
+        )
         self.controllerNode.accountsAndPeers.set(self.accountsAndPeers.get() |> map { $0.1 })
         self.controllerNode.activeSessionsContextAndCount.set(self.activeSessionsContextAndCount.get())
         self.cachedDataPromise.set(self.controllerNode.cachedDataPromise.get())
